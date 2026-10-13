@@ -1,41 +1,20 @@
 ---
-- name: Create directory for Docker apt keyrings
-  ansible.builtin.file:
-    path: /etc/apt/keyrings
-    state: directory
-    mode: '0755'
-
-- name: Add Docker official GPG signing key
-  ansible.builtin.apt_key:
-    url: https://download.docker.com/linux/ubuntu/gpg
-    keyring: /etc/apt/keyrings/docker.gpg
-    state: present
-
-- name: Add Docker APT repository for Ubuntu
-  ansible.builtin.apt_repository:
-    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
-    state: present
-    filename: docker
-
-- name: Install Docker Engine and Docker Compose plugin
-  ansible.builtin.apt:
+- name: Install Docker and Docker Compose from Ubuntu repositories
+  apt:
     name:
-      - docker-ce
-      - docker-ce-cli
-      - containerd.io
-      - docker-buildx-plugin
-      - docker-compose-plugin
+      - docker.io
+      - docker-compose-v2
     state: present
     update_cache: yes
 
 - name: Ensure Docker service is enabled and running
-  ansible.builtin.systemd:
+  systemd:
     name: docker
     enabled: yes
     state: started
 
 - name: Add user to docker group
-  ansible.builtin.user:
+  user:
     name: "{{ ansible_user | default('ubuntu') }}"
     groups: docker
     append: yes

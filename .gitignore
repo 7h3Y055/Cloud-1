@@ -1,0 +1,11 @@
+# Environment files (secrets)
+.env
+Inception/.env
+
+# Ansible retry files
+*.retry
+
+# SSL keys & certs
+*.key
+*.crt
+Inception/ssl/
