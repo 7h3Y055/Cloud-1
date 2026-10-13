@@ -1,0 +1,8 @@
+---
+- name: Automated deployment of Inception (Cloud-1)
+  hosts: all
+  become: yes
+  roles:
+    - common
+    - docker
+    - app

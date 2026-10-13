@@ -1,0 +1,49 @@
+---
+- name: Ensure destination directory exists on remote host
+  ansible.builtin.file:
+    path: /opt/inception
+    state: directory
+    mode: '0755'
+
+- name: Ensure SSL directory exists
+  ansible.builtin.file:
+    path: /opt/inception/ssl
+    state: directory
+    mode: '0755'
+
+- name: Check if SSL certificate already exists
+  ansible.builtin.stat:
+    path: /opt/inception/ssl/server.crt
+  register: ssl_cert
+
+- name: Generate self-signed SSL certificate (if not present)
+  ansible.builtin.command: >
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048
+    -keyout /opt/inception/ssl/server.key
+    -out /opt/inception/ssl/server.crt
+    -subj "/C=FR/ST=IDF/L=Paris/O=42/OU=Cloud-1/CN={{ ansible_host }}"
+  when: not ssl_cert.stat.exists
+
+- name: Copy docker-compose.yml to remote host
+  ansible.builtin.copy:
+    src: ../../Inception/docker-compose.yml
+    dest: /opt/inception/docker-compose.yml
+    mode: '0644'
+
+- name: Copy nginx.conf to remote host
+  ansible.builtin.copy:
+    src: ../../Inception/nginx.conf
+    dest: /opt/inception/nginx.conf
+    mode: '0644'
+
+- name: Copy .env file to remote host (if exists locally)
+  ansible.builtin.copy:
+    src: ../../Inception/.env
+    dest: /opt/inception/.env
+    mode: '0600'
+  ignore_errors: yes
+
+- name: Start Inception Docker Compose stack
+  ansible.builtin.command:
+    cmd: docker compose up -d --remove-orphans
+    chdir: /opt/inception
