@@ -2,6 +2,11 @@
 .env
 Inception/.env
 
+# SSH Keys
+server-key
+*.pem
+id_*
+
 # Ansible retry files
 *.retry
 
