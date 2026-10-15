@@ -26,24 +26,93 @@
 
 - name: Copy docker-compose.yml to remote host
   copy:
-    src: ../../Inception/docker-compose.yml
+    src: "{{ playbook_dir }}/../Inception/docker-compose.yml"
     dest: /opt/inception/docker-compose.yml
     mode: '0644'
 
 - name: Copy nginx.conf to remote host
   copy:
-    src: ../../Inception/nginx.conf
+    src: "{{ playbook_dir }}/../Inception/nginx.conf"
     dest: /opt/inception/nginx.conf
     mode: '0644'
 
 - name: Copy .env file to remote host (if exists locally)
   copy:
-    src: ../../Inception/.env
+    src: "{{ playbook_dir }}/../Inception/.env"
     dest: /opt/inception/.env
     mode: '0600'
   ignore_errors: yes
 
 - name: Start Inception Docker Compose stack
-  command:
-    cmd: docker compose up -d --remove-orphans
+  command: docker compose up -d --remove-orphans
+  args:
     chdir: /opt/inception
+
+- name: Wait for WordPress web server to become ready
+  command: docker compose exec -T wordpress curl -s -o /dev/null -w "%{http_code}" http://localhost
+  args:
+    chdir: /opt/inception
+  register: wp_health
+  until: wp_health.stdout in ["200", "302"]
+  retries: 20
+  delay: 3
+
+- name: Install WP-CLI inside WordPress container if missing
+  command: >
+    docker compose exec -T wordpress bash -c "
+    if [ ! -f /usr/local/bin/wp ]; then
+      curl -s -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar &&
+      chmod +x wp-cli.phar &&
+      mv wp-cli.phar /usr/local/bin/wp
+    fi"
+  args:
+    chdir: /opt/inception
+
+- name: Check if WordPress is already installed
+  command: docker compose exec -T wordpress wp core is-installed --allow-root
+  args:
+    chdir: /opt/inception
+  register: wp_installed
+  failed_when: false
+  changed_when: false
+
+- name: Install WordPress and configure admin account
+  command: >
+    bash -c "set -a; [ -f /opt/inception/.env ] && source /opt/inception/.env; set +a;
+    docker compose exec -T wordpress wp core install
+    --url='https://{{ ansible_host }}'
+    --title=\"${WP_SITE_TITLE:-Cloud-1 Inception}\"
+    --admin_user=\"${WP_ADMIN_USER:-admin_user}\"
+    --admin_password=\"${WP_ADMIN_PASSWORD:-super_secret_admin_pass_42}\"
+    --admin_email=\"${WP_ADMIN_EMAIL:-admin@example.com}\"
+    --skip-email
+    --allow-root"
+  args:
+    chdir: /opt/inception
+  when: wp_installed.rc != 0
+
+- name: Create non-admin author user
+  command: >
+    bash -c "set -a; [ -f /opt/inception/.env ] && source /opt/inception/.env; set +a;
+    docker compose exec -T wordpress wp user create
+    \"${WP_USER:-student}\"
+    \"${WP_USER_EMAIL:-student@example.com}\"
+    --role=author
+    --user_pass=\"${WP_USER_PASSWORD:-super_secret_student_pass_42}\"
+    --allow-root"
+  args:
+    chdir: /opt/inception
+  when: wp_installed.rc != 0
+  ignore_errors: yes
+
+- name: Create initial sample post
+  command: >
+    docker compose exec -T wordpress wp post create
+    --post_title="Welcome to Cloud-1 Inception"
+    --post_content="This WordPress site and infrastructure were deployed completely automatically with Ansible and Docker."
+    --post_status=publish
+    --allow-root
+  args:
+    chdir: /opt/inception
+  when: wp_installed.rc != 0
+  ignore_errors: yes
